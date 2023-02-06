@@ -30,13 +30,41 @@ interface MVI {
     }
 
 
+    interface BaseView<STATE : UIState, INTENT : Intent, VM : BaseViewModel<INTENT, STATE>> : IView<STATE, INTENT>,
+        LifecycleOwner {
+
+        var _viewModel: VM?
+
+        val mViewModel: VM
+            get() = _viewModel ?: createViewModel().apply {
+                lifecycleScope.launchWhenStarted {
+                    uiStateFlow.collect {
+                        Log.d(TAG, "onUIState: $it")
+                        onUIState(it)
+                    }
+                }
+                _viewModel = this
+            }
+
+        fun createViewModel(): VM
+
+        override fun sendIntent(intent: INTENT) {
+            lifecycleScope.launch {
+                mViewModel.intentChannel.send(intent)
+            }
+        }
+    }
+
+
     /**
      * 基类，View ViewModel，包装了之间的UIState、Intent基础传递与处理
      */
-    abstract class BaseView<STATE : UIState, INTENT : Intent, VM : BaseViewModel<INTENT, STATE>> : IView<STATE, INTENT>, LifecycleOwner {
+    abstract class BaseViewDep<STATE : UIState, INTENT : Intent, VM : BaseViewModel<INTENT, STATE>>(
+        private val lifecycleOwner: LifecycleOwner
+    ) : IView<STATE, INTENT>, LifecycleOwner by lifecycleOwner {
 
         val TAG: String
-            get() = "MVI-${this@BaseView.javaClass.simpleName}"
+            get() = "MVI-${this@BaseViewDep.javaClass.simpleName}"
 
         val viewModel: VM by lazy {
             createViewModel().apply {
